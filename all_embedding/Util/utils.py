@@ -160,6 +160,7 @@ def build_para_mlp(args, flag, input_shape):
     model.add(Input(shape=input_shape))
     for i in range(args["layer"]):
         model.add(Dense(args["dense_unit"], activation='relu'))
+        model.add(Dropout(args["drop_out"]))
     model.add(Flatten())
     if flag:
         model.add(Dense(args["class_num"], activation='softmax'))
@@ -389,16 +390,16 @@ def split_dataset(all_code_part, all_label_part, class_num, times, k, split_flag
                 all_code_part[i] = all_code_part[i].tolist()
             if i-1 == times:
             # if i == times:
-                x_val = np.asarray(all_code_part[i]).astype(np.float32)
+            #     x_val = np.asarray(all_code_part[i]).astype(np.float32)
+            #     y_val = np.asarray(all_label_part[i])
+                x_val = np.asarray(all_code_part[i]).astype(np.float16)
                 y_val = np.asarray(all_label_part[i])
-                # x_val = np.asarray(all_code_part[i]).astype(np.float16)
-                # y_val = np.asarray(all_label_part[i])
             else:
                 x_train += all_code_part[i]
                 y_train += all_label_part[i]
 
-        x_test, y_test = np.asarray(all_code_part[0]).astype(np.float32), np.asarray(all_label_part[0])
-        # x_test, y_test = np.asarray(all_code_part[0]).astype(np.float16), np.asarray(all_label_part[0])
+        # x_test, y_test = np.asarray(all_code_part[0]).astype(np.float32), np.asarray(all_label_part[0])
+        x_test, y_test = np.asarray(all_code_part[0]).astype(np.float16), np.asarray(all_label_part[0])
         # x_test, y_test = np.asarray(all_code_part[k-1]).astype(np.float32), np.asarray(all_label_part[k-1]).astype(np.float32)
 
     elif split_flag == "False":
@@ -406,21 +407,23 @@ def split_dataset(all_code_part, all_label_part, class_num, times, k, split_flag
             if not isinstance(all_code_part[i], list):
                 all_code_part[i] = all_code_part[i].tolist()
             if i == times:
-                x_val = np.asarray(all_code_part[i]).astype(np.float32)
+                # x_val = np.asarray(all_code_part[i]).astype(np.float32)
+                # y_val = np.asarray(all_label_part[i])
+                x_val = np.asarray(all_code_part[i]).astype(np.float16)
                 y_val = np.asarray(all_label_part[i])
-                # x_val = np.asarray(all_code_part[i]).astype(np.float16)
-                # y_val = np.asarray(all_label_part[i]).astype(np.float16)
             else:
                 x_train += all_code_part[i]
                 y_train += all_label_part[i]
         x_test, y_test = x_val, y_val
 
-    x_train = np.asarray(x_train).astype(np.float32)
-    # x_train = np.asarray(x_train).astype(np.float16)
-    if class_num == 2 or categorical_flag == "False":
+    # x_train = np.asarray(x_train).astype(np.float32)
+    x_train = np.asarray(x_train).astype(np.float16)
+    # if class_num == 2 or categorical_flag == "False":
+    if class_num == 2:
         y_train = np.asarray(y_train)
         # y_train = np.asarray(y_train).astype(np.float16)
-    elif categorical_flag == "True":
+    # elif class_num != 2 or categorical_flag == "True":
+    elif class_num != 2:
         y_train = np_utils.to_categorical(np.asarray(y_train), num_classes=class_num)
         # y_train = np_utils.to_categorical(np.asarray(y_train).astype(np.float16), num_classes=class_num)
     return x_train, y_train, x_val, y_val, x_test, y_test

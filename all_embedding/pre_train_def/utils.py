@@ -6,7 +6,7 @@ import javalang
 import gc
 
 CodeDocument = collections.namedtuple('CodeDocument', 'words tags cls info')
-
+# 3 6 9 12 毕业
 def read_file(doc_path):
     # f = open(doc_path, "rb")
     all_code_blocks = []
@@ -37,6 +37,7 @@ def read_file(doc_path):
     return all_code_blocks, all_labels
 
 
+
 def read_ir_file(doc_path):
     f = open(doc_path, "rb")
     all_code_blocks = []
@@ -58,7 +59,11 @@ def read_ir_file(doc_path):
                     else:
                         code.append(block.words[j])
                         j += 1
-
+                # for i in range(len(code)):
+                #     if re.match("\".*\"", code[i].strip()):
+                #         code[i] = re.sub("\".*\"", "CONST", code[i].strip())
+                #     if re.match("\'.*\'", code[i].strip()):
+                #         code[i] = re.sub("\'.*\'", "CONST", code[i].strip())
                 all_code_blocks.append(code)
                 all_labels.append(block.cls)
             except UnicodeEncodeError as e:

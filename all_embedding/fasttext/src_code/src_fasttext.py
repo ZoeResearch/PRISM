@@ -1,4 +1,9 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 import tensorflow as tf
+# gpus = tf.config.experimental.list_physical_devices('GPU')
+# for gpu in gpus:
+#     tf.config.experimental.set_memory_growth(gpu, True)
 import sys
 sys.path.append("../../")
 from pre_train_def import fasttext
@@ -14,7 +19,7 @@ sess=tf.compat.v1.Session(config=config)
 def process_all_data(pre_model_path, code, embed_arg, cls, doc_path, rank_file, K_fold, mul_bin_flag, retrain):
     pre_model_path = pre_model_path + args.code + "_" + str(embed_arg['iter']) + "_" + str(
         embed_arg['window']) + "_" + str(embed_arg['voc_size']) + ".wordvectors"
-    fasttext.train(args.cls, args.code, pre_model_path, embed_arg, args.retrain)
+    fasttext.train(pre_model_path, embed_arg, args.retrain, doc_path)
     model = KeyedVectors.load(pre_model_path, mmap="r")
     all_vec_part, all_label_part = prepare_data(doc_path, model, embed_arg["voc_size"],
                                                 embed_arg["sentence_length"], code, rank_file, K_fold,
@@ -36,10 +41,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     K_fold = int(args.fold)
+    sard_binary_doc_path = "../../pickle_object/sard/detect/src/"
+    sard_binary_rank_file = "../../pickle_object/sard/detect/rank/"
     spot_multiclass_doc_path = "../../pickle_object/spotbugs/detect_mul/" + args.code + "/"
     spot_multiclass_rank_file = "../../pickle_object/spotbugs/detect_mul/rank/"
     spot_binary_doc_path = "../../pickle_object/spotbugs/detect_bin_sample_15000/" + args.code + "/"
     spot_binary_rank_file = "../../pickle_object/spotbugs/detect_bin_sample_15000/rank/"
+    oop_binary_doc_path, oop_pre_model_path, oop_binary_rank_file = "../../pickle_object/oopsla/detect_bin/" + args.code + "/", \
+                                                                    "../../pre_train_def/oopsla/fasttext/", \
+                                                                    "../../pickle_object/oopsla/detect_bin/rank/"
 
     sard_pre_model_path = "../../pre_train_def/sard/fasttext/"
     spotbugs_pre_model_path = "../../pre_train_def/spotbugs/fasttext/"
@@ -67,10 +77,14 @@ if __name__ == "__main__":
     pool_size_range = [5, 10, 20]
     kernel_size_range = [5, 10, 20]
 
-    if args.cls == "spot_bin":
+    if args.cls == "sard_bin":
+        mul_bin_flag, doc_path, pre_model_path, rank_file = 0, sard_binary_doc_path, sard_pre_model_path, sard_binary_rank_file
+    elif args.cls == "spot_bin":
         mul_bin_flag, doc_path, pre_model_path, rank_file = 0, spot_binary_doc_path, spotbugs_pre_model_path, spot_binary_rank_file
     elif args.cls == "spot_mul":
         mul_bin_flag, doc_path, pre_model_path, rank_file = 1, spot_multiclass_doc_path, spotbugs_pre_model_path, spot_multiclass_rank_file
+    elif args.cls == "oop_bin":
+        mul_bin_flag, doc_path, pre_model_path, rank_file = 0, oop_binary_doc_path, oop_pre_model_path, oop_binary_rank_file
     else:
         print("no category!")
 
@@ -98,14 +112,14 @@ if __name__ == "__main__":
                     num = K_fold - 1
                 elif args.split_test == "False":
                     num = K_fold
-                with tf.device('/gpu:' + args.gpu):
-                    for times in range(7, num):
-                        start = time.time()
-                        print("**************************" + str(times) + " time training**************************")
-                        cherry_pick(all_vec_part, all_label_part, embed_arg, detect_arg, times, args.split_test,
-                                                           K_fold, mul_bin_flag, args.neural, args.code, save_base)
-                        end = time.time()
-                        print("total time:", end - start)
+
+                for times in range(num):
+                    start = time.time()
+                    print("**************************" + str(times) + " time training**************************")
+                    cherry_pick(all_vec_part, all_label_part, embed_arg, detect_arg, times, args.split_test,
+                                                       K_fold, mul_bin_flag, args.neural, args.code, save_base)
+                    end = time.time()
+                    print("total time:", end - start)
                 del all_vec_part
                 del all_label_part
                 gc.collect()

@@ -1,4 +1,9 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import tensorflow as tf
+# gpus = tf.config.experimental.list_physical_devices('GPU')
+# for gpu in gpus:
+#         tf.config.experimental.set_memory_growth(gpu, True)
 import sys
 sys.path.append("../..")
 from pre_train_def import glove
@@ -13,12 +18,23 @@ sess=tf.compat.v1.Session(config=config)
 def process_all_data(embed_base, pre_model_path, code, embed_arg, cls, doc_path, rank_file, K_fold, mul_bin_flag, retrain):
     pre_model_path = pre_model_path + code + "_" + str(embed_arg['max_iter']) + "_" + str(
         embed_arg['window_size']) + "_" + str(embed_arg['voc_size']) + ".txt"
+    vec_path = cls + "/" + "vec_" + str(embed_arg['max_iter']) + "_" + str(
+        embed_arg['window_size']) + "_" + str(embed_arg['voc_size'])
+    label_path = cls + "/" + "label_" + str(embed_arg['max_iter']) + "_" + str(
+        embed_arg['window_size']) + "_" + str(embed_arg['voc_size'])
 
+    # if os.path.exists(vec_path) and os.path.exists(label_path):
+    #     print("loading...")
+    #     all_vec_part, all_label_part = pickle.load(open(vec_path, "rb")), pickle.load(open(label_path, "rb"))
+    # else:
     glove.train(cls, code, embed_base, pre_model_path, embed_arg, retrain)
     model = KeyedVectors.load_word2vec_format(pre_model_path)
     all_vec_part, all_label_part = prepare_data(doc_path, model, embed_arg["voc_size"],
                                                 embed_arg["sentence_length"], code, rank_file, K_fold,
                                                 mul_bin_flag)
+        # dump_object(vec_path, all_vec_part)
+        # dump_object(label_path, all_label_part)
+        # print("dump finished!")
     del model
     gc.collect()
     return all_vec_part, all_label_part
@@ -35,11 +51,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     K_fold = int(args.fold)
 
+    sard_binary_doc_path = "../../pickle_object/sard/detect/src/"
+    sard_binary_rank_file = "../../pickle_object/sard/detect/rank/"
+    # sard_binary_doc_path = "../../pickle_object/test/"
     spot_multiclass_doc_path = "../../pickle_object/spotbugs/detect_mul/"+ args.code + "/"
     spot_multiclass_rank_file = "../../pickle_object/spotbugs/detect_mul/rank/"
     spot_binary_doc_path = "../../pickle_object/spotbugs/detect_bin_sample_15000/" + args.code + "/"
     spot_binary_rank_file = "../../pickle_object/spotbugs/detect_bin_sample_15000/rank/"
-
+    oop_binary_doc_path, oop_pre_model_path, oop_binary_rank_file = "../../pickle_object/oopsla/detect_bin/" + args.code + "/", \
+                                                                    "../../pre_train_def/oopsla/glove/", \
+                                                                    "../../pickle_object/oopsla/detect_bin/rank/"
     embed_base = "../../pre_train_def/GloVe-master/"
     sard_pre_model_path = "../../pre_train_def/sard/glove/"
     spotbugs_pre_model_path = "../../pre_train_def/spotbugs/glove/"
@@ -73,12 +94,38 @@ if __name__ == "__main__":
     pool_size_range = [5, 10, 20]
     kernel_size_range = [5, 10, 20]
 
-    if args.cls == "spot_bin":
+    #########
+
+    if args.cls == "sard_bin":
+        mul_bin_flag, doc_path, pre_model_path, rank_file = 0, sard_binary_doc_path, sard_pre_model_path, sard_binary_rank_file
+    elif args.cls == "spot_bin":
         mul_bin_flag, doc_path, pre_model_path, rank_file = 0, spot_binary_doc_path, spotbugs_pre_model_path, spot_binary_rank_file
     elif args.cls == "spot_mul":
         mul_bin_flag, doc_path, pre_model_path, rank_file = 1, spot_multiclass_doc_path, spotbugs_pre_model_path, spot_multiclass_rank_file
+    elif args.cls == "oop_bin":
+        mul_bin_flag, doc_path, pre_model_path, rank_file = 0, oop_binary_doc_path, oop_pre_model_path, oop_binary_rank_file
     else:
         print("no category!")
+
+    # embed_arg = dict(memory = memory, num_threads = num_threads, verbose = verbose, binary = binary,
+    #                   vocab_min_count = vocab_min_count, voc_size = vector_size, max_iter = max_iter,
+    #                   window_size = window_size, x_max = x_max, sentence_length = sentence_length_range)
+    # detect_arg = dict(batch_size_range=batch_size_range,epochs_d_range=epochs_d_range, lstm_unit_range=lstm_unit_range,
+    #                   optimizer_range=optimizer_range, layer_range=layer_range, drop_out_range=drop_out_range)
+    # print("preparing for data...")
+    # # glove.train(args.cls, code, pre_model_path)
+    # model = KeyedVectors.load_word2vec_format(pre_model_path)
+    # all_vec_part, all_label_part = prepare_data(doc_path, model, embed_arg["voc_size"],
+    #                                             embed_arg["sentence_length"], code, rank_file, K_fold, mul_bin_flag)
+    #
+    # start = time.time()
+    # for times in range(K_fold - 1):
+    #     print("**************************" + str(times) + " time training**************************")
+    #     # x_train, y_train, x_test, y_test = split_dataset(all_vec_part, all_label_part, 2, times)
+    #     Glove.glove_lstm.cherry_pick(all_vec_part, all_label_part, embed_arg, detect_arg, code, times, args.cls, K_fold, flag=mul_bin_flag)
+    #     # print(x_train.shape)
+    # end = time.time()
+    # print("total time:", end - start)
 
     detect_arg = dict(batch_size_range=batch_size_range, epochs_d_range=epochs_d_range, lstm_unit_range=lstm_unit_range,
                       optimizer_range=optimizer_range, layer_range=layer_range, drop_out_range=drop_out_range,
@@ -104,14 +151,14 @@ if __name__ == "__main__":
                 elif args.split_test == "False":
                     num = K_fold
 
-                with tf.device('/gpu:' + args.gpu):
-                    for times in range(9, num):
-                        start = time.time()
-                        print("**************************" + str(times) + " time training**************************")
-                        cherry_pick(all_vec_part, all_label_part, embed_arg, detect_arg, times, args.split_test,
-                                                           K_fold, mul_bin_flag, args.neural, args.code, save_base)
-                        end = time.time()
-                        print("total time:", end - start)
+
+                for times in range(num):
+                    start = time.time()
+                    print("**************************" + str(times) + " time training**************************")
+                    cherry_pick(all_vec_part, all_label_part, embed_arg, detect_arg, times, args.split_test,
+                                                       K_fold, mul_bin_flag, args.neural, args.code, save_base)
+                    end = time.time()
+                    print("total time:", end - start)
                 del all_vec_part
                 del all_label_part
                 gc.collect()

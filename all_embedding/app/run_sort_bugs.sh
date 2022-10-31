@@ -2,13 +2,23 @@
 
 env=base
 data=spot_bin
-embed_model=("w2v" "fasttext" "glove" "elmo")
-network=("gru" "bgru" "lstm" "blstm" "textcnn")
-
+#embed_model=("fasttext") #dell bgru --dell
+#embed_model=("glove") #dell    bgru--on xp dell blstm--dell,passwd          gru--dell--ok
+#embed_model=("elmo") #base      bgru--base,passwd  blstm--xp base,dell  gru--base,dell
+embed_model=("w2v") #passwd    bgru-- passwd,dell    blstm--passwd        gru--passwd,base
+#embed_model=("w2v" "glove") #base
+#embed_model=("bert_seq") #mingwen2
+network=("gru" "lstm" "blstm" "bgru")
+#network=("gru" "lstm" "bgru")
+#network=("blstm" "textcnn")
+#gpu=0
 proc_num=0
-single_proc_per_gpu=1
-running_gpu=1
-gpu=1
+single_proc_per_gpu=2
+running_gpu=2
+#gpu_num=4
+#number=0
+#program_num_per_gpu=1
+gpu=0
 
 for i in ${embed_model[@]}
 do

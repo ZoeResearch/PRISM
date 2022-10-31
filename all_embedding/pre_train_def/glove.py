@@ -4,6 +4,7 @@ sys.path.append("../..")
 from gensim.models import KeyedVectors
 from gensim.scripts.glove2word2vec import glove2word2vec
 import os
+
 from pre_train_def.utils import *
 
 def gen_corpus(code_blocks, corpus_path):
@@ -63,6 +64,12 @@ def train_glove(args_range):
         args_range["vector_size"]) + " -binary " + str(binary) + " -vocab-file " \
               + vocab_file + " -verbose " + str(verbose))
     glove2word2vec(glove_file, w2v_file)
+    # model = KeyedVectors.load_aaaaword2vec_format(w2v_file)  # 该加载的文件格式需要转换为utf-8
+    # print(model[':='])
+    # print(model.most_similar('virtualinvoke'))
+    # print(model.most_similar('invokeinterface'))
+    # print(model.most_similar('specialinvoke'))
+    # print(model.most_similar('CLS1'))
 
 def train(dataset, code, base, pre_model_path, embed_arg, retrain):
     if retrain == "True":
@@ -73,13 +80,17 @@ def train(dataset, code, base, pre_model_path, embed_arg, retrain):
             return
     if dataset == "sard_bin":
         src_path = "../../pickle_object/sard/embedding/doc_src_embedding"
+        ir_path = "../../pickle_object/sard/embedding/doc_IR_embedding"
+        byte_path = "../../pickle_object/sard/embedding/doc_byte_embedding"
 
     elif dataset == "spot_bin" or dataset == "spot_mul":
         src_path = "../../pickle_object/spotbugs/embedding/src"
-
+        ir_path = "../../pickle_object/spotbugs/embedding/ir"
+        byte_path = "../../pickle_object/spotbugs/embedding/byte"
     elif dataset == "oop_bin":
         src_path = "../../pickle_object/oopsla/embedding/src"
-
+        ir_path = "../../pickle_object/oopsla/embedding/ir"
+        byte_path = "../../pickle_object/oopsla/embedding/byte"
     else:
         print("training embedding parameter error")
         exit(0)
@@ -93,7 +104,26 @@ def train(dataset, code, base, pre_model_path, embed_arg, retrain):
         build_dir = base + "build"
         save_file = base + "src_code/src_vectors"
         glove_file = base + 'src_code/src_vectors.txt'
-
+    elif "ir" in code:
+        code_path = ir_path
+        print("training ir...")
+        corpus_path = base + "IR/IR_corpus.txt"
+        vocab_path = base + "IR/IR_vocab.txt"
+        cooccurrence_file = base + "IR/cooccurrence.bin"
+        cooccurrence_shuf_file = base + "IR/cooccurrence.shuf.bin"
+        build_dir = base + "build"
+        save_file = base + "IR/IR_vectors"
+        glove_file = base + 'IR/IR_vectors.txt'
+    elif "byte" in code:
+        code_path = byte_path
+        print("training byte...")
+        corpus_path = base + "byte/byte_corpus.txt"
+        vocab_path = base + "byte/byte_vocab.txt"
+        cooccurrence_file = base + "byte/cooccurrence.bin"
+        cooccurrence_shuf_file = base + "byte/cooccurrence.shuf.bin"
+        build_dir = base + "build"
+        save_file = base + "byte/byte_vectors"
+        glove_file = base + 'byte/byte_vectors.txt'
 
     arg = dict(vocab_min_count=embed_arg["vocab_min_count"], vector_size=embed_arg["voc_size"],
                max_iter=embed_arg["max_iter"],
@@ -103,8 +133,10 @@ def train(dataset, code, base, pre_model_path, embed_arg, retrain):
                save_file=save_file, memory=embed_arg["memory"], num_threads=embed_arg["num_threads"],
                verbose=embed_arg["verbose"], binary=embed_arg["binary"],
                glove_file=glove_file, w2v_file=pre_model_path)
-
-    code_blocks, code_label = read_file(code_path)
+    if "ir" in code:
+        code_blocks, code_label = read_ir_file(code_path)
+    else:
+        code_blocks, code_label = read_file(code_path)
     corpus = gen_corpus(code_blocks, corpus_path)
     vocab = gen_vocab(code_blocks, vocab_path)
     train_glove(arg)

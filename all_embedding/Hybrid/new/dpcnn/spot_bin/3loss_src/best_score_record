@@ -1,0 +1,2 @@
+min_count	voc_size	sg	negative	sample	hs	iter	window	sentence_length	class_num	batch_size	epochs_d	lstm_unit	optimizer	layer	drop_out	learning_rate	gru_unit	dense_unit	pool_size	kernel_size	accuracy	precision	recall	f1	fpr	tpr	thresholds	auc_score	
+0	100	0	5	0.001	0	5	5	200	2	128	50	32	Adam	2	0.5	0.0003	64	32	20	5	0.8587674247982392	0.8643815201192251	0.851063829787234	0.8576709796672829	[0.        0.1466763 1.       ]	[0.         0.86438152 1.        ]	[2 1 0]	0.8588526097705952	

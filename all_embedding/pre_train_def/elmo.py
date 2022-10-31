@@ -77,7 +77,7 @@ def dump_embedding(vocab_file, model_path, code_path):
         # Build the biLM graph.
         bilm = BidirectionalLanguageModel(options_file, weight_file)
 
-        # Get ops to compute the LM embeddings.
+        # Get ops to compute the LM embeddings. ？？
         context_embeddings_op = bilm(context_character_ids)
 
         # Get an op to compute ELMo (weighted average of the internal biLM layers)
@@ -117,6 +117,12 @@ def dump_embedding(vocab_file, model_path, code_path):
 
     test = pickle.load(open(result_embed, "rb"))
     print(test["("])
+
+    # print("()", ds.cosine(test["("], test[")"]))
+    # print("(=", ds.cosine(test["("], test["="]))
+    # print("var0, var1", ds.cosine(test["variable0"], test["variable1"]))
+    # print("mth0, mth1", ds.cosine(test["method0"], test["method1"]))
+    # print("mth0, var0", ds.cosine(test["method0"], test["variable0"]))
 
 def train_elmo(n_train_tokens, vocab, data, src_model_path):
     n_gpus = 1
@@ -204,13 +210,13 @@ if __name__ == '__main__':
         src_corpus, ir_corpus, byte_corpus = "./oopsla/elmo/src_train_corpus", "./oopsla/elmo/ir_train_corpus", "./oopsla/elmo/byte_train_corpus"
         src_vocab, ir_vocab, byte_vocab = "./oopsla/elmo/src_vocab.txt", "./oopsla/elmo/ir_vocab.txt", "./oopsla/elmo/byte_vocab.txt"
 
-    for path in [src_model_path, ir_model_path, byte_model_path, src_corpus, ir_corpus, byte_corpus]:
-        if os.path.exists(path):
-            shutil.rmtree(path)
-        os.makedirs(path)
-    for path in [src_vocab, ir_vocab, byte_vocab]:
-        if os.path.exists(path):
-            os.remove(path)
+    # for path in [src_model_path, ir_model_path, byte_model_path, src_corpus, ir_corpus, byte_corpus]:
+    #     if os.path.exists(path):
+    #         shutil.rmtree(path)
+    #     os.makedirs(path)
+    # for path in [src_vocab, ir_vocab, byte_vocab]:
+    #     if os.path.exists(path):
+    #         os.remove(path)
 
     print("processing src...")
     # preprocess, generate vocab and data
@@ -227,7 +233,9 @@ if __name__ == '__main__':
     train_elmo(token_num, vocab, data, src_model_path)
     # save all embeddings
     print("dump weight...")
-
+    # cmd = "python ./bilm_tf/bin/dump_weights.py --save_dir " + "'" + src_model_path + "'" + " --outfile " + "'" + src_model_path +"weights.hdf5'"
+    # print(cmd)
+    # os.system(cmd)
     dump_weights(src_model_path, src_model_path + "weight.hdf5")
     #
     start = time.time()
@@ -236,6 +244,47 @@ if __name__ == '__main__':
     end = time.time()
     print("total:", end-start)
 
+
+    # print("processing IR...")
+    # # preprocess, generate vocab and data
+    # embed_code, token_num = load_code(ir_path)
+    # process_corpus(embed_code, ir_corpus)
+    # vocab_size = Counter(embed_code, ir_vocab)
+    #
+    # # load data and vocab
+    # vocab = load_vocab(ir_vocab, 50)
+    # data = BidirectionalLMDataset(ir_corpus + "/*", vocab, test=False,
+    #                               shuffle_on_load=True)
+    # # training with different parameters
+    # train_elmo(token_num, vocab, data, ir_model_path)
+    # print("dump weight...")
+    # dump_weights(ir_model_path, ir_model_path + "weight.hdf5")
+    #
+    # start = time.time()
+    # print("dump embedding...")
+    # dump_embedding(ir_vocab, ir_model_path, ir_path)
+
+    # print("processing byte...")
+    # # preprocess, generate vocab and data
+    # embed_code, token_num = load_code(byte_path)
+    # process_corpus(embed_code, byte_corpus)
+    # vocab_size = Counter(embed_code, byte_vocab)
+    #
+    # # load data and vocab
+    # vocab = load_vocab(byte_vocab, 50)
+    # data = BidirectionalLMDataset(byte_corpus + "/*", vocab, test=False,
+    #                               shuffle_on_load=True)
+    # # training with different parameters
+    # train_elmo(token_num, vocab, data, byte_model_path)
+    # print("dump weight...")
+    # dump_weights(byte_model_path, byte_model_path + "weight.hdf5")
+    #
+    # start = time.time()
+    # print("dump embedding...")
+    # dump_embedding(byte_vocab, byte_model_path, byte_path)
+    # print("done!")
+    #
+    #
 
 
 

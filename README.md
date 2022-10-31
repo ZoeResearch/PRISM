@@ -51,7 +51,7 @@ cd spot_bin(spot_mul)/src_w2v_lstm (results are saved in best_score_record)
 
 --fold:  the number of fold for conducting cross validation, it is fixed to "11", which means the dataset is split to 9:1:1.
 
---retrain: whether to retrain the pretrained embeddding model, as we release the trained CRL models, it is set to "False". You can set it to "True" if you want to retrain the CRL models.
+--retrain: whether to retrain the pretrained embedding model, as we release the trained CRL models, it is set to "False". You can set it to "True" if you want to retrain the CRL models.
 
 --split_test:  whether to split the test set, it is fixed to "True".
 
@@ -72,7 +72,7 @@ mv YOURPATH/pre_trained_model/model4data2 ./app/model/src_top_20
 
 cd ./app
 
-python sort_bug.py --filter 0 --balance 1 --train 1 ---method embedding --code src --embed w2v --detect gru 
+python sort_bug.py --filter 0 --balance 1 --train 1 --method embedding --code src --embed w2v --detect gru 
 
 cd ./score/w2v_gru/ (results are saved in best_score_record)
 ```
@@ -117,6 +117,8 @@ cd ../../app/vote_score/(vote_group3/vote_group5/vote_group7/vote_group9)/ (to s
 cd ./app_embedding/app/
 
 python sort_bug.py --filter 0 --balance 1 --train 0 --method hwp --code src 
+
+(Results will be output to the console)
 ```
 
 - running baseline2: the "Golden features" (i.e. GF)
@@ -125,6 +127,8 @@ python sort_bug.py --filter 0 --balance 1 --train 0 --method hwp --code src
 cd ./app
 
 python baseline_SVM.py
+
+(Results will be output to the console)
 ```
 
 the 6 Selected Golden Features:

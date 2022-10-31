@@ -22,9 +22,9 @@ import shutil
 import csv
 
 CodeDocument = collections.namedtuple('CodeDocument', 'words tags cls info')
-def hard_vote(pred_results, x_test, y_test):
+def hard_vote(pred_results, test_length, y_test):
     pred_result_final = []
-    for i in range(len(x_test)):
+    for i in range(test_length):
         temp = 0
         for j in range(len(pred_results)):
             temp += pred_results[j][i]
@@ -35,12 +35,12 @@ def hard_vote(pred_results, x_test, y_test):
     hard_vote_test_score = get_score_binaryclassfication(pred_result_final, y_test)
     return hard_vote_test_score
 
-def soft_vote(pred_prob_results, x_test, y_test):
+def soft_vote(pred_prob_results, test_length, y_test):
     pred_result_mean = []
     pred_result_prob = []
     # weight = [0.05, 0.1, 0.15, 0.3, 0.4]
     # weight = [0.5, 0.2, 0.15, 0.1, 0.05]
-    for i in range(len(x_test)):
+    for i in range(test_length):
         # temp = np.asarray([0, 0])
         temp = 0
         for j in range(len(pred_prob_results)):
@@ -140,20 +140,13 @@ def train_model(all_code, mul_bin_flag, ename, embed_model_base, dname, detect_m
                                                            ename)
     return
 
-def group_vote(embed_model_base, embed_names, detect_model_base, detect_names, results, save_base, time, n_bug, embed_setting, soft_group_names, hard_group_names):
+def group_vote(embed_names, detect_model_base, detect_names, results, save_base, time, n_bug, embed_setting, soft_group_names, hard_group_names):
     pred_prob_results = {}
     pred_results = {}
     num_index = {}
     i = 0
-    conn = "src"
+
     for ename in embed_names:
-        # embed_model = load_embed_model(ename, embed_model_base)
-        # embed_arg = load_embed_arg(ename)
-        # x_train, y_train, x_val, y_val, x_test, y_test, test = get_train_test(all_code, embed_model,
-        #                                                                       embed_arg["voc_size"],
-        #                                                                       embed_arg["sentence_length"],
-        #                                                                       mul_bin_flag, ename)
-        # pickle.dump([x_test, y_test], open(test_data_path, "wb"))
         for dname in detect_names:
             single_result_save_base = detect_model_base + ename + "_" + dname + "/"
             detect_model_path = single_result_save_base + "best_model_" + str(time) + ".h5"
@@ -188,14 +181,14 @@ def group_vote(embed_model_base, embed_names, detect_model_base, detect_names, r
         pred = []
         for name in soft_group_names:
             pred_prob.append(pred_prob_results[name])
-        soft_vote_score, soft_prob = soft_vote(pred_prob, x_test, y_test)
+        soft_vote_score, soft_prob = soft_vote(pred_prob, len(x_test), y_test)
         soft_best_score = soft_vote_score
         soft_best_index = soft_group_names
         soft_best_pred = soft_prob
 
         for name in hard_group_names:
             pred.append(pred_results[name])
-        hard_vote_score = hard_vote(pred, x_test, y_test)
+        hard_vote_score = hard_vote(pred, len(x_test), y_test)
         hard_best_score = hard_vote_score
         hard_best_index = hard_group_names
 
@@ -207,7 +200,7 @@ def group_vote(embed_model_base, embed_names, detect_model_base, detect_names, r
             for num in group_num:
                 pred_prob.append(pred_prob_results[num_index[num]])
                 pred.append(pred_results[num_index[num]])
-            soft_vote_score, soft_prob = soft_vote(pred_prob, x_test, y_test)
+            soft_vote_score, soft_prob = soft_vote(pred_prob, len(x_test), y_test)
             hard_vote_score = hard_vote(pred, x_test, y_test)
             if soft_vote_score["f1"] > soft_best_f1:
                 soft_best_f1 = soft_vote_score["f1"]
@@ -221,23 +214,23 @@ def group_vote(embed_model_base, embed_names, detect_model_base, detect_names, r
         soft_best_index = [num_index[i] for i in soft_best_num]
         hard_best_index = [num_index[i] for i in hard_best_num]
 
-    pred_data = list(zip(x_test, y_test, soft_prob))
-    pred_data = sorted(pred_data, key=lambda k: k[2], reverse=True)
-    pickle.dump(pred_data, open(save_base + "testdata_sort_"+ str(time), "wb"))
-    print("dump finished")
+    # save data [vector, label, probability]
+    # pred_data = list(zip(x_test, y_test, soft_prob))
+    # pred_data = sorted(pred_data, key=lambda k: k[2], reverse=True)
+    # pickle.dump(pred_data, open(save_base + "testdata_sort_"+ str(time), "wb"))
+    # print("dump finished")
     print("best_soft_score:", soft_best_score)
     print("best_soft_index", soft_best_index)
     print("best_hard_score:", hard_best_score)
     print("best_hard_index", hard_best_index)
     # add rank
     soft_best_score["top_n_tp"], soft_best_score["top_n_precision"] = get_rank_score(soft_best_pred, y_test.tolist(), n_bug)
-    # utils.write_record(args, test_score, save_base+"/best_score_record")
     print("one time:", soft_best_score)
 
     write_record({"index": soft_best_index}, soft_best_score, save_base + "soft_vote_results")
     write_record({"index": hard_best_index}, hard_best_score, save_base + "hard_vote_results")
 
-    return
+    return soft_prob
 
 def read_csv_file(path):
     with open(path, mode='rt', encoding='UTF-8-sig') as csvfile:
@@ -271,16 +264,23 @@ if __name__ == '__main__':
     parser.add_argument('--vote', '-v')
     # parser.add_argument('--detect', '-d')
     args = parser.parse_args()
+
     embed_model_base = "../../app/model/src_top_20/"
     detect_model_base = "../../app/score/"
 
-    violation_doc_path = "../../app/data/src_top_20"
-    vote_save_base = "../../app/vote_score/vote_"+args.embed+"/"
+
+    violation_doc_path = "../../app/data/src_top_20_with_time_newest_with_warning_context_for_warning_type_without_test_classes"
+    vote_save_path = "../../app/vote_score/"
+    vote_save_base = vote_save_path + "vote_"+args.embed+"/"
 
     embed_names = ["w2v", "fasttext", "glove", "elmo"]
     detect_names = ["gru", "bgru", "lstm", "blstm", "textcnn"]
-    # first = rank(detect_model_base_ori, embed_names, detect_names)
-    # second = rank(detect_model_base, embed_names, detect_names)
+
+    if not os.path.exists(vote_save_path):
+        os.mkdir(vote_save_path)
+    if not os.path.exists(vote_save_base):
+        os.mkdir(vote_save_base)
+
 
     mul_bin_flag = 0
     filter_flag = 0
@@ -327,11 +327,12 @@ if __name__ == '__main__':
             soft_group_name = ['w2v_bgru', 'w2v_blstm', 'fasttext_bgru', 'elmo_bgru', 'w2v_textcnn', 'glove_blstm', 'fasttext_blstm', 'glove_bgru', 'fasttext_textcnn']
             hard_group_name = ['w2v_bgru', 'w2v_blstm', 'fasttext_bgru', 'elmo_bgru', 'w2v_textcnn', 'glove_blstm', 'fasttext_blstm', 'glove_bgru', 'fasttext_textcnn']
 
-        if not os.path.exists(vote_save_base):
-            os.mkdir(vote_save_base)
-        for i in range(1):
-            group_vote(embed_model_base, embed_names, detect_model_base, detect_names, results,
+
+        for i in range(10):
+            soft_prob = group_vote(embed_names, detect_model_base, detect_names, results,
                      vote_save_base, i, n_bug, args.embed, soft_group_name, hard_group_name)
+
+
     # else:
     #     if not os.path.exists(detect_model_base):
     #         os.mkdir(detect_model_base)

@@ -12,15 +12,14 @@ import argparse
 from pre_train_def.w2v import train_word2vec
 from pre_train_def.fasttext import train_fasttext
 from pre_train_def.glove import train_glove, gen_corpus, gen_vocab
-from Bert.utils import encode_examples
+from Bert.utils import bert_encode, roberta_encode, get_part_embeddings
+from transformers import BertTokenizer, RobertaTokenizer, TFRobertaModel, AutoTokenizer, AutoModel
 
-SEED = 10
+
 
 def get_train_test(all_code, model, voc_size, sentence_length, mul_bin_flag, embed_name):
     train, val, test = [], [], []
     fix, unfix = [], []
-    random.seed(SEED)
-    random.shuffle(all_code)  #for reproducing
 
     for i in range(len(all_code)):
         if all_code[i].cls == 1:
@@ -31,32 +30,103 @@ def get_train_test(all_code, model, voc_size, sentence_length, mul_bin_flag, emb
     for i in range(int(len(fix)*0.6)):
         train.append(fix[i])
         train.append(unfix[i])
-    for i in range(int(len(fix)*0.6)+1, int(len(fix)*0.8)):
+    for i in range(int(len(fix)*0.6), int(len(fix)*0.8)):
         val.append(fix[i])
         val.append(unfix[i])
-    for i in range(int(len(fix)*0.8)+1, int(len(fix))):
+    for i in range(int(len(fix)*0.8), int(len(fix))):
         test.append(fix[i])
         test.append(unfix[i])
-    # temp1, temp2, temp3 = 0, 0, 0
-    # for i in range(len(train)):
-    #     temp1 += train[i].cls
-    # for i in range(len(val)):
-    #     temp2 += val[i].cls
-    # for i in range(len(test)):
-    #     temp3 += test[i].cls
+
+    random.shuffle(train)
+    random.shuffle(val)
+    random.shuffle(test)
+
     if embed_name == "bert_seq":
-        train_input_ids, train_token_type_ids, train_attention_mask, y_train = encode_examples(train, "bert-base-uncased", 200, mul_bin_flag)
-        val_input_ids, val_token_type_ids, val_attention_mask, y_val = encode_examples(val, "bert-base-uncased", 200, mul_bin_flag)
-        test_input_ids, test_token_type_ids, test_attention_mask, y_test = encode_examples(test, "bert-base-uncased", 200, mul_bin_flag)
+        train_input_ids, train_token_type_ids, train_attention_mask, y_train = bert_encode(train, "bert-base-uncased", 200, mul_bin_flag)
+        val_input_ids, val_token_type_ids, val_attention_mask, y_val = bert_encode(val, "bert-base-uncased", 200, mul_bin_flag)
+        test_input_ids, test_token_type_ids, test_attention_mask, y_test = bert_encode(test, "bert-base-uncased", 200, mul_bin_flag)
         x_train = [np.asarray(train_input_ids), np.asarray(train_token_type_ids), np.asarray(train_attention_mask)]
         x_val = [np.asarray(val_input_ids), np.asarray(val_token_type_ids), np.asarray(val_attention_mask)]
         x_test = [np.asarray(test_input_ids), np.asarray(test_token_type_ids), np.asarray(test_attention_mask)]
+
+    elif embed_name == "codebert_seq" or embed_name == "roberta_seq":
+        if embed_name == "codebert_seq":
+            tokenizer = RobertaTokenizer.from_pretrained("microsoft/codebert-base")
+        else:
+            tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+        train_input_ids, train_token_type_ids, train_attention_mask, y_train = roberta_encode(train, tokenizer,
+                                                                                           200, mul_bin_flag)
+        val_input_ids, val_token_type_ids, val_attention_mask, y_val = roberta_encode(val, tokenizer, 200,
+                                                                                   mul_bin_flag)
+        test_input_ids, test_token_type_ids, test_attention_mask, y_test = roberta_encode(test, tokenizer, 200,
+                                                                                       mul_bin_flag)
+        x_train = [np.asarray(train_input_ids), np.asarray(train_token_type_ids), np.asarray(train_attention_mask)]
+        x_val = [np.asarray(val_input_ids), np.asarray(val_token_type_ids), np.asarray(val_attention_mask)]
+        x_test = [np.asarray(test_input_ids), np.asarray(test_token_type_ids), np.asarray(test_attention_mask)]
+
+    elif embed_name == "codebert_token":
+        tokenizer = AutoTokenizer.from_pretrained("microsoft/codebert-base")
+        x_train, y_train, train_length = get_part_embeddings(tokenizer, model, train, sentence_length, voc_size, mul_bin_flag)
+        x_val, y_val, val_length = get_part_embeddings(tokenizer, model, val, sentence_length, voc_size, mul_bin_flag)
+        x_test, y_test, test_length = get_part_embeddings(tokenizer, model, test, sentence_length, voc_size, mul_bin_flag)
+        x_train, x_val, x_test = np.asarray(x_train), np.asarray(x_val), np.asarray(x_test)
+    # elif embed
+
     else:
         x_train, y_train = get_vec_label(model, train, voc_size, sentence_length, mul_bin_flag)
         x_val, y_val = get_vec_label(model, val, voc_size, sentence_length, mul_bin_flag)
         x_test, y_test = get_vec_label(model, test, voc_size, sentence_length, mul_bin_flag)
 
-    return x_train, np.asarray(y_train), x_val, np.asarray(y_val), x_test, np.asarray(y_test), test
+    return x_train, np.asarray(y_train), x_val, np.asarray(y_val), x_test, np.asarray(y_test), train, val, test
+
+def encode(bert_model_name, embed_model, all_doc, sentence_length, voc_size, mul_bin_flag):
+    if bert_model_name == "codebert_token":
+        model_name = "microsoft/codebert-base"
+    elif bert_model_name == "roberta_token":
+        model_name = "roberta-base"
+    elif bert_model_name == "bert_token":
+        model_name = "bert-base-uncased"
+    else:
+        print("no specify bert model name")
+        exit(0)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    all_vec, all_label, all_code_filter = get_part_embeddings(tokenizer, embed_model, all_doc, sentence_length, voc_size, mul_bin_flag)
+    return all_vec, all_label, all_code_filter
+
+def get_bert_train_test(all_code, all_vec, all_label):
+    fix_index, unfix_index = [], []
+    train_index, val_index, test_index = [], [], []
+    for i in range(len(all_code)):
+        if all_code[i].cls == 1:
+            fix_index.append(i)
+        else:
+            unfix_index.append(i)
+
+    length = min(len(fix_index), len(unfix_index))
+    for i in range(int(length * 0.6)):
+        train_index.append(fix_index[i])
+        train_index.append(unfix_index[i])
+    for i in range(int(length * 0.6), int(length * 0.8)):
+        val_index.append(fix_index[i])
+        val_index.append(unfix_index[i])
+    for i in range(int(length * 0.8), int(length)):
+        test_index.append(fix_index[i])
+        test_index.append(unfix_index[i])
+
+    random.shuffle(train_index)
+    random.shuffle(val_index)
+    random.shuffle(test_index)
+
+    x_train = [all_vec[index] for index in train_index]
+    y_train = [all_label[index] for index in train_index]
+    x_val = [all_vec[index] for index in val_index]
+    y_val = [all_label[index] for index in val_index]
+    x_test = [all_vec[index] for index in test_index]
+    y_test = [all_label[index] for index in test_index]
+
+    train_doc, val_doc, test_doc = [all_code[index] for index in train_index], [all_code[index] for index in val_index], [all_code[index] for index in test_index]
+
+    return np.asarray(x_train).astype(np.float16), np.asarray(y_train), np.asarray(x_val).astype(np.float16), np.asarray(y_val), np.asarray(x_test).astype(np.float16), np.asarray(y_test), train_doc, val_doc, test_doc
 
 def count_statistic(codelist):
     num, num0, num1, num2, num3, num4, num5, num6, num7, num8, num9 = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -173,6 +243,8 @@ def get_path(pre_model_path, embed_arg, code):
         embed_arg['window']) + "_" + str(embed_arg['voc_size']) + ".wordvectors"
 
 def train_embed(embed, model_path, doc_path, embed_arg):
+    if not embed:
+        return None
     if not os.path.isdir(model_path+"/"+embed):
         os.mkdir(model_path+"/"+embed)
     if embed == "w2v":
@@ -282,4 +354,35 @@ def load_embed_arg(embed):
         model_name_range = ["bert-base-uncased"]
         max_length_range = [200]  # encode plus data have start and end
         embed_arg = dict(model_name=model_name_range[0], max_length=max_length_range[0], voc_size=0, sentence_length=0)
+    elif embed == "codebert_seq":
+        model_name_range = ["microsoft/codebert-base"]
+        max_length_range = [200]  # encode plus data have start and end
+        embed_arg = dict(model_name=model_name_range[0], max_length=max_length_range[0], voc_size=0, sentence_length=0)
+    elif embed == "codebert_token":
+        model_name_range = ["microsoft/codebert-base"]
+        embed_arg = dict(model_name=model_name_range[0], voc_size=768, sentence_length=200)
+    elif embed == "bert_token":
+        model_name_range = ["bert-base-uncased"]
+        embed_arg = dict(model_name=model_name_range[0], voc_size=768, sentence_length=200)
+    elif embed == "roberta_token":
+        model_name_range = ["roberta-base"]
+        embed_arg = dict(model_name=model_name_range[0], voc_size=768, sentence_length=200)
+    elif embed == "roberta_seq":
+        model_name_range = ["roberta-base"]
+        max_length_range = [200]  # encode plus data have start and end
+        embed_arg = dict(model_name=model_name_range[0], max_length=max_length_range[0], voc_size=0, sentence_length=0)
+    else:
+        embed_arg = {}
+
     return embed_arg
+
+
+def rank_pattern(dataset, keyword):
+    pattern_dic = {}
+    for item in dataset:
+        pattern = item.info[keyword]
+        if pattern not in pattern_dic.keys():
+            pattern_dic[pattern] = 1
+        else:
+            pattern_dic[pattern] += 1
+    return sorted(pattern_dic.items(), key = lambda x: x[1], reverse=True)

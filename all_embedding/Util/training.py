@@ -8,7 +8,7 @@ sys.path.append("../../")
 from Util.utils import *
 from Util.gen_HYDE import *
 from Bert.Bert_model import wrap_bert_model_run_detect
-from app.appUtils import get_rank_score
+# from app.appUtils import get_rank_score
 
 def wrap_model_run_detect(x_train, y_train, x_val, y_val, args, flag, conn, classification_model):
     input_shape = get_input_shape(conn, args)
@@ -164,8 +164,9 @@ def cherry_pick(all_vec_part, all_label_part, embed_arg, detect_arg, times, spli
     check_exist()
     args1 = embed_arg
     categorical_flag = "False"
-    print("start hybrid")
+
     if code in ["all_1", "all_2", "all_3", "all_4", "linear_row", "linear_col", "add", "sub", "mul"]:
+        print("start hybrid")
         all_vec_part = hybrid(k, embed_arg["sentence_length"], embed_arg["voc_size"], code, all_vec_part)
     x_train, y_train, x_val, y_val, x_test, y_test = split_dataset(all_vec_part, all_label_part, class_num,
                                                                        times, k, split_flag, categorical_flag)
@@ -245,6 +246,7 @@ def cherry_pick_new(x_train, y_train, x_val, y_val, x_test, y_test, embed_arg, d
     dense_unit_range = detect_arg["dense_unit_range"]
     pool_size_range = detect_arg["pool_size_range"]
     kernel_size_range = detect_arg["kernel_size_range"]
+    encode_layer_range = detect_arg["encode_layer_range"]
 
     if classification_model == "lstm" or classification_model == "blstm":
         gru_unit_range = [gru_unit_range[0]]
@@ -277,28 +279,30 @@ def cherry_pick_new(x_train, y_train, x_val, y_val, x_test, y_test, embed_arg, d
     check_exist()
     args1 = embed_arg
     categorical_flag = "False"
-    if embed_model_name == "bert_seq":
+    if embed_model_name == "bert_seq" or embed_model_name == "codebert_seq" or embed_model_name == "roberta_seq":
         for batch_size in batch_size_range:
             for epochs_d in epochs_d_range:
                 for optimizer in optimizer_range:
                     for learning_rate in learning_rate_range:
-                        args2 = dict(class_num=class_num, batch_size=batch_size, epochs_d=epochs_d,
-                                     optimizer=optimizer, learning_rate=learning_rate)
-                        args = Merge(args1, args2)
-                        score, detect_model, history = wrap_bert_model_run_detect(x_train, y_train, x_val, y_val, args,
-                                                                                  flag, conn, classification_model,
-                                                                                  embed_model_name)
-                        if flag:
-                            f1 = score["micro_f1"]
-                        else:
-                            f1 = score["f1"]
-                        if f1 > best_f1_score:
-                            best_f1_score = f1
-                            best_model = detect_model
-                        else:
-                            del detect_model
-                            gc.collect()
+                        for encode_layers in encode_layer_range:
+                            args2 = dict(class_num=class_num, batch_size=batch_size, epochs_d=epochs_d,
+                                         optimizer=optimizer, learning_rate=learning_rate, encode_layers=encode_layers)
+                            args = Merge(args1, args2)
+                            score, detect_model, history = wrap_bert_model_run_detect(x_train, y_train, x_val, y_val, args,
+                                                                                      flag, conn, classification_model,
+                                                                                      embed_model_name)
+                            if flag:
+                                f1 = score["micro_f1"]
+                            else:
+                                f1 = score["f1"]
+                            if f1 > best_f1_score:
+                                best_f1_score = f1
+                                best_model = detect_model
+                            else:
+                                del detect_model
+                                gc.collect()
     else:
+        start = time.time()
         for batch_size in batch_size_range:
             for epochs_d in epochs_d_range:
                 for lstm_unit in lstm_unit_range:
@@ -315,7 +319,12 @@ def cherry_pick_new(x_train, y_train, x_val, y_val, x_test, y_test, embed_arg, d
                                                                  learning_rate = learning_rate, gru_unit=gru_unit, dense_unit=dense_unit,
                                                                  pool_size=pool_size, kernel_size=kernel_size)
                                                     args = Merge(args1, args2)
-                                                    score, detect_model, history = wrap_model_run_detect(x_train, y_train, x_val, y_val, args, flag, conn, classification_model)
+                                                    if embed_model_name == "bert_token" or embed_model_name == "codebert_token" or embed_model_name == "roberta_token":
+                                                        score, detect_model, history = wrap_bert_model_run_detect(x_train, y_train, x_val, y_val, args,
+                                                                                   flag, conn, classification_model,
+                                                                                   embed_model_name)
+                                                    else:
+                                                        score, detect_model, history = wrap_model_run_detect(x_train, y_train, x_val, y_val, args, flag, conn, classification_model)
                                                     write_record(args, score, save_base + "/tune_record_" + str(times))
                                                     if flag:
                                                         f1 = score["micro_f1"]
@@ -328,6 +337,8 @@ def cherry_pick_new(x_train, y_train, x_val, y_val, x_test, y_test, embed_arg, d
                                                     # else:
                                                     #     del detect_model
                                                     #     gc.collect()
+        end = time.time()
+        print("one time training cost time:", end - start)
     if flag:
         test_y_pre = np.argmax(best_model.predict(x_test), axis=-1)
         test_score = get_score_multiclassfication(test_y_pre, y_test, args["class_num"])
@@ -338,15 +349,17 @@ def cherry_pick_new(x_train, y_train, x_val, y_val, x_test, y_test, embed_arg, d
         # test_score = add_metric(best_model, x_test, y_test, test_score, times)
     # print("test score:", test_score)
     # test_score["top_n_tp"], test_score["top_n_precision"] = get_rank_score(y_prob, y_test.tolist(), n_bug)
+    pred_prob = best_model.predict(x_test)
     write_record(best_args, test_score, save_base + "/best_score_record")
-    if embed_model_name == "bert_seq":
-        if not os.path.isdir(save_base+"/"+"best_model_"+ str(times)):
-            os.mkdir(save_base+"/"+"best_model_"+ str(times))
-        best_model.save_weights(save_base + "/best_model_" + str(times) + "/best_model")
-    else:
-        best_model.save(save_base + "/best_model_" + str(times) + ".h5")
-    pickle.dump([x_test, y_test], open(save_base+"testdata_" + str(time), "wb"))
+    pickle.dump([x_test, y_test], open(save_base + "/testdata_" + str(time), "wb"))
+    # if embed_model_name == "bert_seq":
+    #     if not os.path.isdir(save_base+"/"+"best_model_"+ str(times)):
+    #         os.mkdir(save_base+"/"+"best_model_"+ str(times))
+    #     best_model.save_weights(save_base + "/best_model_" + str(times) + "/best_model")
+    # else:
+    #     best_model.save(save_base + "/best_model_" + str(times) + ".h5")
+
     del x_train, y_train, x_val, y_val, x_test, y_test
     gc.collect()
 
-    return best_model, args, test_score, test_y_pre
+    return best_model, args, test_score, test_y_pre, pred_prob, best_model

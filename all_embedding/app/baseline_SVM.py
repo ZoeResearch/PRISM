@@ -147,7 +147,7 @@ def load_pickle(pickle_path):
 def main(path, stop_at, clf, interesting_path, seed=0):
     if not os.path.exists(path):
         os.makedirs(path)
-    training_x, training_y, testset_x, testset_y = load_pickle("data/src_top_35")
+    training_x, training_y, testset_x, testset_y = load_pickle("data/src_top_35_invalid_commitIDs_removed_deduplication_by_token_multiple_label_issue_resolved_with_constructor_with_baseline")
 
     print("training_x\n", training_x.columns)
 
@@ -268,7 +268,7 @@ if __name__ == "__main__":
                 cost = []
                 f1_pos_list = []
 
-                repeated_times = 5
+                repeated_times = 10
                 for i in range(1, 1+repeated_times):
                     print("\n-------------------------------------------------------------------------------------------------------------------")
                     print("@@@ C - Repeat number:", i, flush=True)

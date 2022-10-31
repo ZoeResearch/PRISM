@@ -1,7 +1,7 @@
 import argparse
 import collections
 import tensorflow as tf
-from transformers import BertTokenizer, RobertaTokenizer, RobertaModel, AutoModelForSequenceClassification, TrainingArguments
+from transformers import BertTokenizer, RobertaTokenizer,  TFRobertaModel, RobertaModel, AutoModelForSequenceClassification, TrainingArguments
 from tensorflow.python import keras
 from tensorflow.python.keras import Input
 from tensorflow.python.keras.layers import GlobalAveragePooling1D
@@ -15,6 +15,7 @@ from transformers import AutoTokenizer, AutoModel
 CodeDocument = collections.namedtuple('CodeDocument', 'words tags cls info')
 
 def convert_example_to_feature(review, tokenizer, max_length):
+    # 单个数据转换为bert的输入形式 encode_plue返回三个元素的字典
     # max_length = 200
     return tokenizer.encode_plus(review,
                                  add_special_tokens=True,  # add [CLS], [SEP]
@@ -25,8 +26,12 @@ def convert_example_to_feature(review, tokenizer, max_length):
                                  )
 
 
-def encode_examples(code_docs, name, max_length, mul_bin_flag):
+
+
+
+def bert_encode(code_docs, name, max_length, mul_bin_flag):
     # prepare list, so that we can build up final TensorFlow dataset from slices.
+    #输入：原始代码token list， label
     input_ids_list = []
     token_type_ids_list = []
     attention_mask_list = []
@@ -48,47 +53,105 @@ def encode_examples(code_docs, name, max_length, mul_bin_flag):
     print("length of bert_input", len(input_ids_list))
     return input_ids_list, token_type_ids_list, attention_mask_list, label_list
 
-def prepare_bert_data(doc_path, rank_base, k, mul_bin_flag, model_name, max_length):
+def prepare_bert_model_data(doc_path, rank_base, k, mul_bin_flag, model_name, max_length):
     all_input_ids = {}
     all_token_type_ids = {}
     all_attention_mask = {}
     all_label_part = {}
     all_codedoc = split_codedoc(doc_path, rank_base, k, mul_bin_flag)
     for i in range(k):
-        all_input_ids[i], all_token_type_ids[i], all_attention_mask[i], all_label_part[i] = encode_examples(all_codedoc[i], model_name, max_length, mul_bin_flag)
+        all_input_ids[i], all_token_type_ids[i], all_attention_mask[i], all_label_part[i] = bert_encode(all_codedoc[i], model_name, max_length, mul_bin_flag)
+    return all_input_ids, all_token_type_ids, all_attention_mask, all_label_part
+
+def roberta_encode(code_docs, tokenizer, sentence_length, mul_bin_flag):
+    MAX_LEN = sentence_length + 2
+    ct = len(code_docs)
+    input_ids = np.ones((ct, MAX_LEN), dtype='int32')
+    attention_mask = np.zeros((ct, MAX_LEN), dtype='int32')
+    token_type_ids = np.zeros((ct, MAX_LEN), dtype='int32')  # Not used in text classification
+    label_list = []
+    for k, code_doc in enumerate(code_docs):
+        # Tokenize
+        text = code_doc.words
+        tok_text = tokenizer.tokenize(" ".join(text))
+
+        # Truncate and convert tokens to numerical IDs
+        enc_text = tokenizer.convert_tokens_to_ids(tok_text[:(MAX_LEN - 2)])
+
+        input_length = len(enc_text) + 2
+        input_length = input_length if input_length < MAX_LEN else MAX_LEN
+
+        # Add tokens [CLS] and [SEP] at the beginning and the end
+        input_ids[k, :input_length] = np.asarray([0] + enc_text + [2], dtype='int32')
+
+        # Set to 1s in the attention input
+        attention_mask[k, :input_length] = 1
+
+        if mul_bin_flag == 1:
+            label_list.append(code_doc.cls)
+        elif mul_bin_flag == 0:
+            if code_doc.cls != 0:
+                label_list.append(1)
+            else:
+                label_list.append(0)
+
+    return input_ids, token_type_ids, attention_mask, label_list
+
+def prepare_roberta_model_data(doc_path, rank_base, k, mul_bin_flag, model_name, max_length, pretrain_model_name):
+    tokenizer = RobertaTokenizer.from_pretrained(pretrain_model_name)
+    all_input_ids = []
+    all_token_type_ids = []
+    all_attention_mask = []
+    all_label_part = []
+    all_codedoc = split_codedoc(doc_path, rank_base, k, mul_bin_flag)
+    for i in range(k):
+        part_input_ids, part_token_type, part_mask, part_label = roberta_encode(all_codedoc[i], tokenizer, max_length, mul_bin_flag)
+        all_input_ids.append(part_input_ids)
+        all_token_type_ids.append(part_token_type)
+        all_attention_mask.append(part_mask)
+        all_label_part.append(part_label)
     return all_input_ids, all_token_type_ids, all_attention_mask, all_label_part
 
 def get_part_embeddings(tokenizer, model, code_docs, sentence_length, voc_size, mul_bin_flag):
     embeddings = []
     length = []
     label_list = []
+    filter_length_number = 0
+    all_code = []
     for i in range(len(code_docs)):
-        if mul_bin_flag == 1:
-            label_list.append(code_docs[i].cls)
-        elif mul_bin_flag == 0:
-            if code_docs[i].cls != 0:
-                label_list.append(1)
-            else:
-                label_list.append(0)
         doc = code_docs[i]
         if doc.words:
-            tokens = tokenizer.tokenize(doc.words)
+            # print(len(doc.words))
+            tokens = tokenizer.tokenize(" ".join(doc.words))
             split_tokens = [tokenizer.cls_token] + tokens
             tokens_ids = tokenizer.convert_tokens_to_ids(split_tokens)
+            if len(tokens_ids) > 512:
+                filter_length_number += 1
+                continue
+
             context_embeddings = model(torch.tensor(tokens_ids)[None, :])[0]
-            context_embeddings = np.asarray(context_embeddings).reshape(-1, 768)[1:]
+            # context_embeddings = np.asarray(context_embeddings).reshape(-1, 768)[1:]
+            context_embeddings = context_embeddings.detach().numpy().reshape(-1, 768)[1:]
             length.append(len(context_embeddings))
             if len(context_embeddings) > sentence_length:
                 context_embeddings = context_embeddings[:sentence_length]
             else:
-                temp = []
-                for i in range(sentence_length-len(context_embeddings)):
-                    temp.append([0]*voc_size)
-                context_embeddings = np.vstack([context_embeddings, np.asarray(temp)])
+                for _ in range(sentence_length-len(context_embeddings)):
+                    temp=[0]*voc_size
+                    context_embeddings = np.vstack([context_embeddings, np.asarray(temp)])
+            embeddings.append(context_embeddings)
+            all_code.append(doc)
 
-        embeddings.append(context_embeddings)
+            if mul_bin_flag == 1:
+                label_list.append(code_docs[i].cls)
+            elif mul_bin_flag == 0:
+                if code_docs[i].cls != 0:
+                    label_list.append(1)
+                else:
+                    label_list.append(0)
 
-    return embeddings, label_list, length
+    print("filter number:", filter_length_number)
+    return embeddings, label_list, all_code
 
 def get_codebert_word_input(doc_path, rank_base, k, mul_bin_flag, tokenizer, model, sentence_length, voc_size):
     all_codedoc = split_codedoc(doc_path, rank_base, k, mul_bin_flag)
@@ -100,7 +163,37 @@ def get_codebert_word_input(doc_path, rank_base, k, mul_bin_flag, tokenizer, mod
         all_word_embeddings.append(embeddings)
         all_length += length
         all_label_list.append(labels)
+    # count_statistic(all_length)
     return all_word_embeddings, all_label_list
+
+def count_statistic(codelist):
+    num, num0, num1, num2, num3, num4, num5, num6, num7, num8, num9 = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    for i in codelist:
+        if 60 >= i:
+            num += 1
+        elif 100 >= i > 60: ##
+            num0 += 1
+        elif 200>=i>100:
+            num1 += 1
+        elif 300>=i>200:
+            num2 += 1
+        elif 500>=i>300:
+            num3 += 1
+        elif 600>=i>500:
+            num4 += 1
+        elif 700>=i>600:
+            num5 += 1
+        elif 800>=i>700:
+            num6 += 1
+        elif 1000>=i>800:
+            num7 += 1
+        elif 1500>=i>1000:
+            num8 += 1
+        elif 3000>=i>1500:
+            num9 += 1
+
+    for n in [num, num0, num1, num2, num3, num4, num5, num6, num7, num8, num9]:
+        print(n)
 
 def get_word_idx(sent: str, word: str):
     return sent.split(" ").index(word)
