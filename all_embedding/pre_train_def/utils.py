@@ -6,7 +6,17 @@ import javalang
 import gc
 
 CodeDocument = collections.namedtuple('CodeDocument', 'words tags cls info')
-# 3 6 9 12 毕业
+
+def read_all_file(base):
+    all_code, all_label = [], []
+    for root, ds, fs in os.walk(base):
+        for f in fs:
+            filePath = root+"/"+f
+            with open(filePath, "r") as f:
+                all_code.append(pickle.load(f))
+                all_label.append(pickle.load(f))
+    return all_code, all_label
+
 def read_file(doc_path):
     # f = open(doc_path, "rb")
     all_code_blocks = []

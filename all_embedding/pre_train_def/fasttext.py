@@ -1,6 +1,6 @@
 import sys
 sys.path.append("../..")
-from pre_train_def.utils1 import read_all_file
+from pre_train_def.utils import read_all_file
 from gensim.models import fasttext
 import os
 import gc

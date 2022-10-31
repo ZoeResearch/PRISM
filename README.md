@@ -13,6 +13,7 @@ Tested on ubuntu 18.04:
 - Keras 2.4.3
 - Pytorch 1.8.1
 - Gensim 3.8.3
+- transformers 4.6.1
 - Numpy 1.19.0
 
 
@@ -24,7 +25,6 @@ Link of dataset and pretrained embedding models:
 https://drive.google.com/drive/folders/1_yb9dSjIkq4Q8NbwfYfGmwh6TY462CFg?usp=sharing
 
 Download two datasets and pretrained models from the link and save to YOURPATH(YOURPATH/dataset, YOURPATH/pre_trained_model).
-
 
 
 ### Evaluating CRL models for bug detection (RQ1)
